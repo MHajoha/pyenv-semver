@@ -1,0 +1,119 @@
+#!/bin/bash
+set -o nounset -o errexit
+shopt -s lastpipe
+
+[ -n "${PYENV_DEBUG:-}" ] && set -x
+
+: "${PYENV_ROOT:?}"
+
+readonly PROG="$(basename "$0")"
+
+_log() {
+  echo "$PROG: $*" >&2
+}
+
+_semver_gt() {
+  local -a left="$1"
+  local -a right="$2"
+
+  if (("$(_semver "$left" M)" > "$(_semver "$right" M)")); then
+    return
+  elif (("$(_semver "$left" M)" < "$(_semver "$right" M)")); then
+    return 1
+  elif (("$(_semver "$left" m)" > "$(_semver "$right" m)")); then
+    return
+  elif (("$(_semver "$left" m)" < "$(_semver "$right" m)")); then
+    return 1
+  elif (("$(_semver "$left" p)" > "$(_semver "$right" p)")); then
+    return
+  elif (("$(_semver "$left" p)" < "$(_semver "$right" p)")); then
+    return 1
+  else
+    # Versions are equal
+    return 1
+  fi
+}
+
+_semver() {
+  local version="$1"
+  local pattern="$2"
+
+  local major="${1%%.*}"
+  local minor_patch="${1#*.}"
+  local minor="${minor_patch%.*}"
+  local patch="${minor_patch#*.}"
+
+  local result="${pattern//M/$major}"
+  local result="${result//m/$minor}"
+  local result="${result//p/$patch}"
+
+  echo "$result"
+}
+
+_list_installed_versions() {
+  find "$PYENV_ROOT/versions" -mindepth 1 -maxdepth 1 -type d,l -print0 |
+    xargs -0L1 basename |
+    sed -nE 's/^([[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+).*$/\1:\0/p'
+}
+
+pyenv_semver_relink() {
+  local opt
+  local dry_run=false
+  while getopts ":n" opt; do
+    case "$opt" in
+    n)
+      dry_run=true
+      echo "$PROG: '-n' set, not making any changes" >&2
+      ;;
+    *)
+      echo "usage: $0 [-n]" >&2
+    esac
+  done
+
+  local -A versions
+  local line
+  _list_installed_versions |
+    while read -r line; do
+      versions["${line%%:*}"]="${line##*:}"
+    done
+
+  local -A max_versions
+  local -A links
+
+  local version
+  for version in "${!versions[@]}"; do
+    local minor
+    minor="$(_semver "$version" M.m)"
+
+    if _semver_gt "$version" "${max_versions["$minor"]:-0.0.0}"; then
+      # Current version is higher than the previous highest version with the same major and minor.
+      max_versions[$minor]="$version"
+      links[$minor]="${versions["$version"]}"
+    fi
+  done
+
+  local error=0
+  for version in "${!links[@]}"; do
+    local link_name="$PYENV_ROOT/versions/$version"
+    local target="${links["$version"]}"
+
+    if [ -L "$link_name" ]; then
+      if [ "$(readlink "$link_name")" == "$target" ]; then
+        _log "unchanged: $link_name -> $target"
+      else
+        $dry_run || ln -sf "$target" "$link_name"
+        _log "update: $link_name -> $target"
+      fi
+    elif [ ! -e "$link_name" ]; then
+      $dry_run || ln -s "$target" "$link_name"
+      _log "create: $link_name -> $target"
+    else
+      echo "$PROG: $link_name exists and is not a link" >&2
+      error=1
+    fi
+  done
+
+  return $error
+}
+
+pyenv_semver_relink "$@"
