@@ -101,7 +101,8 @@ pyenv_semver_relink() {
       if [ "$(readlink "$link_name")" == "$target" ]; then
         _log "unchanged: $link_name -> $target"
       else
-        $dry_run || ln -sf "$target" "$link_name"
+	$dry_run || rm -f "$link_name"
+        $dry_run || ln -s "$target" "$link_name"
         _log "update: $link_name -> $target"
       fi
     elif [ ! -e "$link_name" ]; then
