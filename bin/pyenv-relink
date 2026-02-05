@@ -12,6 +12,9 @@ _log() {
   echo "$PROG: $*" >&2
 }
 
+# Checks if $1 is a semantic version with greater precedence than $2.
+#
+# Returns 0 (success) if so, or 1 (failure) otherwise.
 _semver_gt() {
   local -a left="$1"
   local -a right="$2"
@@ -34,6 +37,16 @@ _semver_gt() {
   fi
 }
 
+# Extracts the major, minor and/or patch parts from $1 according to the pattern $2.
+#
+# Examples:
+#   
+#   $ _semver 1.2.3 p
+#   3
+#
+#   $ _semver 10.1.5 M.m
+#   10.1
+#
 _semver() {
   local version="$1"
   local pattern="$2"
@@ -50,12 +63,26 @@ _semver() {
   echo "$result"
 }
 
+# Finds all python versions currently installed in $PYENV_ROOT.
+#
+# Prints <version>:<directory> for each.
+#
+# Example:
+#
+#   $ _list_installed_versions
+#   3.11.1:3.11.1
+#   3.11.2:3.11.2-moreinfo
+#   3.14.1:3.14.1t
+#
 _list_installed_versions() {
   find "$PYENV_ROOT/versions" -mindepth 1 -maxdepth 1 -type d,l -print0 |
     xargs -0L1 basename |
     sed -nE 's/^([[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+).*$/\1:\0/p'
 }
 
+# Main function.
+#
+# usage: pyenv_semver_relink [-n]
 pyenv_semver_relink() {
   local opt
   local dry_run=false
@@ -70,6 +97,7 @@ pyenv_semver_relink() {
     esac
   done
 
+  # Collect all installed versions into an associative array.
   local -A versions
   local line
   _list_installed_versions |
@@ -77,6 +105,7 @@ pyenv_semver_relink() {
       versions["${line%%:*}"]="${line##*:}"
     done
 
+  # For each Major.minor version, find the highest version and place it's path into links[Major.minor].
   local -A max_versions
   local -A links
 
@@ -92,6 +121,9 @@ pyenv_semver_relink() {
     fi
   done
 
+  # Compare the actual state of the versions dir to links and create/update any links.
+  # 
+  # TODO: Delete orphan links.
   local error=0
   for version in "${!links[@]}"; do
     local link_name="$PYENV_ROOT/versions/$version"
