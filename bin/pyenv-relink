@@ -6,10 +6,8 @@ shopt -s lastpipe
 
 : "${PYENV_ROOT:?}"
 
-readonly PROG="$(basename "$0")"
-
 _log() {
-	echo "$PROG: $*" >&2
+	echo "$(basename "$BASH_SOURCE"): $*" >&2
 }
 
 # Checks if $1 is a semantic version with greater precedence than $2.
@@ -90,10 +88,10 @@ pyenv_semver_relink() {
 		case "$opt" in
 		n)
 			dry_run=true
-			echo "$PROG: '-n' set, not making any changes" >&2
+			_log "'-n' set, not making any changes"
 			;;
 		*)
-			echo "usage: $0 [-n]" >&2
+			_log "usage: $0 [-n]"
 			;;
 		esac
 	done
@@ -147,7 +145,7 @@ pyenv_semver_relink() {
 			$dry_run || ln -s "$target" "$link_name"
 			_log "create: $link_name -> $target"
 		else
-			echo "$PROG: $link_name exists and is not a link" >&2
+			_log "$link_name exists and is not a link"
 			error=1
 		fi
 	done
